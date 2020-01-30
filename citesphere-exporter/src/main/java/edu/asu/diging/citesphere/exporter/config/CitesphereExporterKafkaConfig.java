@@ -16,6 +16,8 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 
+import edu.asu.diging.citesphere.exporter.core.kafka.ReferenceExportListener;
+
 @Configuration
 @EnableKafka
 @PropertySource("classpath:/config.properties")
@@ -65,6 +67,10 @@ public class CitesphereExporterKafkaConfig {
         return factory;
     }
     
+    @Bean
+    public ReferenceExportListener referenceExportListener() {
+        return new ReferenceExportListener();
+    }
 
     public String getHosts() {
         return kafkaHosts;

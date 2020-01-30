@@ -15,22 +15,30 @@
         <spring-data.version>Lovelace-RELEASE</spring-data.version>
         <thymeleaf.version>3.0.11.RELEASE</thymeleaf.version>
         <spring.kafka.version>2.2.6.RELEASE</spring.kafka.version>
-        <citesphere.messages.version>0.2</citesphere.messages.version>
+        <spring-social-zotero.version>0.1</spring-social-zotero.version>
+        <citesphere.messages.version>0.3-SNAPSHOT</citesphere.messages.version>
+        <citesphere.model.version>0.2-SNAPSHOT</citesphere.model.version>
 
         <admin.password>$2a$04$oQo44vqcDIFRoYKiAXoNheurzkwX9dcNmowvTX/hsWuBMwijqn44i</admin.password>
 
+        <upload.folder.path></upload.folder.path>
+
+        <citesphere.base.uri>http://localhost:8080/citesphere</citesphere.base.uri>
         <kafka.hosts></kafka.hosts>
 
         <zotero.client.key></zotero.client.key>
         <zotero.client.secret></zotero.client.secret>
+        <citesphere.client.key></citesphere.client.key>
+        <citesphere.client.secret></citesphere.client.secret>
 
         <db.driver>com.mysql.jdbc.Driver</db.driver>
         <db.database.url>jdbc-url-to-db</db.database.url>
         <db.user>db-user</db.user>
         <db.password>db-password</db.password>
+        <db.hibernate.dialect>org.hibernate.dialect.MySQL5Dialect</db.hibernate.dialect>
 
         <tomcat.deploy.path></tomcat.deploy.path>
-        <tomcat.app.name>citesphere-importer</tomcat.app.name>
+        <tomcat.app.name>citesphere-exporter</tomcat.app.name>
         <tomcat.server.id>TomcatServer</tomcat.server.id>
 
         <log.level>info</log.level>
@@ -65,9 +73,20 @@
         </dependency>
         <dependency>
             <groupId>edu.asu.diging</groupId>
+            <artifactId>citesphere-model</artifactId>
+            <version>${citesphere.model.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>edu.asu.diging</groupId>
             <artifactId>simple-users</artifactId>
             <version>0.5</version>
         </dependency>
+        <dependency>
+            <groupId>edu.asu.diging</groupId>
+            <artifactId>spring-social-zotero</artifactId>
+            <version>${spring-social-zotero.version}</version>
+        </dependency>
+
 
         <!-- Spring -->
         <dependency>
@@ -235,6 +254,20 @@
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
             <version>${spring.kafka.version}</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/commons-io/commons-io -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.6</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.apache.commons/commons-csv -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.7</version>
         </dependency>
 
 
