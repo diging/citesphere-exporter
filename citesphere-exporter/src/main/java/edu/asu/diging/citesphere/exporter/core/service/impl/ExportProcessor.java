@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import javax.annotation.PostConstruct;
+import javax.transaction.Transactional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,7 @@ import edu.asu.diging.citesphere.exporter.core.service.process.Processor;
 import edu.asu.diging.citesphere.messages.model.KafkaJobMessage;
 
 @Service
+@Transactional
 public class ExportProcessor implements IExportProcessor {
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -124,12 +126,20 @@ public class ExportProcessor implements IExportProcessor {
         
         while(citIterator.hasNext()) {
             try {
-                exportWriter.writeRow(citIterator.next());
+                exportWriter.writeRow(citIterator.next(), citIterator.getGrouping());
             } catch (ExportFailedException | IOException e) {
                 // TODO: send back error message
                 logger.error("Couldn't write citations.", e);
                 return;
             }
+        }
+        
+        try {
+            exportWriter.cleanUp();
+        } catch (IOException e) {
+            // TODO: send back error message
+            logger.error("Couldn't close writer.", e);
+            return;
         }
     }
     

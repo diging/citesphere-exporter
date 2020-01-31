@@ -8,24 +8,26 @@ import org.springframework.data.domain.PageRequest;
 import edu.asu.diging.citesphere.data.bib.CollectionCitationMappingRepository;
 import edu.asu.diging.citesphere.exporter.core.service.iterator.CitationIterator;
 import edu.asu.diging.citesphere.model.bib.ICitation;
+import edu.asu.diging.citesphere.model.bib.ICitationCollection;
+import edu.asu.diging.citesphere.model.bib.IGrouping;
 import edu.asu.diging.citesphere.model.bib.impl.CitationCollection;
 import edu.asu.diging.citesphere.model.bib.impl.CollectionCitationMapping;
 
-public class DbCollectionCitationIterator implements Iterator<ICitation>, CitationIterator {
+public class CollectionCitationIterator implements Iterator<ICitation>, CitationIterator {
     
     private CollectionCitationMappingRepository repo;
     private Iterator<CollectionCitationMapping> mappings;
     private long totalPages;
     private int currentPage;
     private int pageSize;
-    private CitationCollection collection;
+    private ICitationCollection collection;
     
-    public DbCollectionCitationIterator(CollectionCitationMappingRepository repo, CitationCollection collection, int pageSize) {
+    public CollectionCitationIterator(CollectionCitationMappingRepository repo, ICitationCollection collection, int pageSize) {
         this.repo = repo;
         this.pageSize = pageSize;
         this.currentPage = 0;
         this.collection = collection;
-        long totalCount = repo.countByCollection(collection);
+        long totalCount = repo.countByCollection((CitationCollection)collection);
         totalPages = totalCount/pageSize + (totalCount%pageSize > 0 ? 1 : 0);
     }
 
@@ -39,7 +41,7 @@ public class DbCollectionCitationIterator implements Iterator<ICitation>, Citati
         }
         
         if (mappings == null) {
-            List<CollectionCitationMapping> ccMappings = repo.findByCollection(collection, PageRequest.of(currentPage, pageSize));
+            List<CollectionCitationMapping> ccMappings = repo.findByCollection((CitationCollection)collection, PageRequest.of(currentPage, pageSize));
             currentPage += 1;
             mappings = ccMappings.iterator();
         }
@@ -54,6 +56,11 @@ public class DbCollectionCitationIterator implements Iterator<ICitation>, Citati
     public ICitation next() {
         CollectionCitationMapping mapping = mappings.next();
         return mapping.getCitation();
+    }
+
+    @Override
+    public IGrouping getGrouping() {
+        return collection;
     }
 
 }

@@ -14,6 +14,7 @@ import edu.asu.diging.citesphere.model.bib.IAffiliation;
 import edu.asu.diging.citesphere.model.bib.ICitation;
 import edu.asu.diging.citesphere.model.bib.ICitationConceptTag;
 import edu.asu.diging.citesphere.model.bib.ICreator;
+import edu.asu.diging.citesphere.model.bib.IGrouping;
 import edu.asu.diging.citesphere.model.bib.IPerson;
 
 public class CsvWriter implements ExportWriter {
@@ -26,7 +27,7 @@ public class CsvWriter implements ExportWriter {
     }
 
     public void init() throws IOException {
-        CSVFormat format = CSVFormat.DEFAULT.withHeader("Key", "Group Id", "Group Name", "Type", "Title", "Date",
+        CSVFormat format = CSVFormat.DEFAULT.withHeader("Key", "Group/Collection Id", "Group/Collection Name", "Type", "Title", "Date",
                 "Authors", "Editors", "Other Creators", "Publication Title", "Volume", "Issue", "Pages", "Series",
                 "Series Title", "URL", "Abstract", "Access Date", "Series Text", "Journal Abbreviation", "Language",
                 "DOI", "ISSN", "Short Title", "Archive", "Archive Location", "Library Catalog", "Call Number", "Rights",
@@ -47,17 +48,12 @@ public class CsvWriter implements ExportWriter {
      * @see edu.asu.diging.citesphere.exporter.core.service.process.impl.ExportWriter#writeRow(edu.asu.diging.citesphere.model.bib.ICitation)
      */
     @Override
-    public void writeRow(ICitation citation) throws ExportFailedException, IOException {
+    public void writeRow(ICitation citation, IGrouping grouping) throws ExportFailedException, IOException {
 
         List<String> row = new ArrayList<>();
         row.add(citation.getKey());
-        if (citation.getGroup() != null) {
-            row.add(citation.getGroup().getId() + "");
-            row.add(citation.getGroup().getName());
-        } else {
-            row.add("");
-            row.add("");
-        }
+        row.add(grouping.getKey() + "");
+        row.add(grouping.getName());
         row.add(citation.getItemType().getZoteroKey());
         row.add(citation.getTitle());
         row.add(citation.getDateFreetext());
