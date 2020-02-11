@@ -1,11 +1,12 @@
 package edu.asu.diging.citesphere.exporter.core.service.impl;
 
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
-import javax.management.RuntimeErrorException;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.PropertySource;
@@ -20,6 +21,7 @@ import edu.asu.diging.citesphere.exporter.core.exception.ZoteroHttpStatusExcepti
 import edu.asu.diging.citesphere.exporter.core.service.IZoteroManager;
 import edu.asu.diging.citesphere.exporter.core.service.iterator.CitationIterator;
 import edu.asu.diging.citesphere.exporter.core.service.iterator.impl.CollectionCitationIterator;
+import edu.asu.diging.citesphere.exporter.core.service.iterator.impl.GroupCitationIterator;
 import edu.asu.diging.citesphere.model.bib.ICitation;
 import edu.asu.diging.citesphere.model.bib.ICitationCollection;
 import edu.asu.diging.citesphere.model.bib.ICitationGroup;
@@ -34,6 +36,8 @@ import edu.asu.diging.citesphere.model.bib.impl.GroupCitationMapping;
 @Service
 @PropertySource("classpath:/config.properties")
 public class CitationManager implements ICitationManager {
+    
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
     @Value("${_db_page_size}")
     private int pageSize;
@@ -69,31 +73,31 @@ public class CitationManager implements ICitationManager {
         if (info.getCollectionId() != null && !info.getCollectionId().trim().isEmpty()) {
             return getCollectionItemsIterator(info);
         }
-        return null;
+        return getGroupItemsIterator(info);
     }
 
     protected CitationIterator getGroupItemsIterator(JobInfo info) throws ZoteroHttpStatusException {
         Optional<CitationGroup> groupOptional = groupRepo.findById(new Long(info.getGroupId()));
         ICitationGroup group = null;
         if (groupOptional.isPresent()) {
-            CitationResults results = zoteroManager.getGroupItems(info.getZoteroId(), info.getZotero(),
-                    info.getGroupId(), 0, SORT_BY_TITLE, groupOptional.get().getVersion());
-            if (!results.isNotModified()) {
+            ICitationGroup latestGroup = zoteroManager.getGroup(info.getZoteroId(), info.getZotero(), info.getGroupId(), true);
+            if (latestGroup.getVersion() != groupOptional.get().getVersion()) {
                 updateCitations(info, groupOptional.get());
             }
             group = groupOptional.get();
         } else {
             group = createGroupCitations(info);
         }
+        
+        return new GroupCitationIterator(gcMappingRepo, group, pageSize);
     }
 
     protected CitationIterator getCollectionItemsIterator(JobInfo info) throws ZoteroHttpStatusException {
         Optional<CitationCollection> collection = collectionRepo.findById(info.getCollectionId());
         ICitationCollection citationCollection;
         if (collection.isPresent()) {
-            CitationResults results = zoteroManager.getCollectionItems(info.getZoteroId(), info.getZotero(),
-                    info.getGroupId(), info.getCollectionId(), 1, SORT_BY_TITLE, collection.get().getVersion());
-            if (!results.isNotModified()) {
+            ICitationCollection latestCollection = zoteroManager.getCitationCollection(info.getZoteroId(), info.getZotero(), info.getGroupId(), info.getCollectionId());
+            if (latestCollection.getVersion() != collection.get().getVersion()) {
                 updateCitations(info, collection.get());
             }
             citationCollection = collection.get();
@@ -121,29 +125,35 @@ public class CitationManager implements ICitationManager {
 
     protected void updateCitations(JobInfo info, ICitationCollection collection) throws ZoteroHttpStatusException {
         ccMappingRepo.deleteByCollection((CitationCollection) collection);
-        downloadCitations(info, collection, this::getCollectionItems, this::createCollectionMapping);
+        collectionRepo.delete((CitationCollection)collection);
+        createCitations(info);
     }
 
     protected void updateCitations(JobInfo info, ICitationGroup group) throws ZoteroHttpStatusException {
         gcMappingRepo.deleteByGroup((CitationGroup) group);
-        downloadCitations(info, group, this::getGroupItems, this::createGroupMapping);
+        groupRepo.delete((CitationGroup)group);
+        createGroupCitations(info);
     }
 
     private void downloadCitations(JobInfo info, IGrouping collection,
-            Function<JobInfo, CitationResults> retrivalFunction, BiConsumer<ICitation, IGrouping> mappingFunction)
+            BiFunction<JobInfo, Integer, CitationResults> retrievalFunction, BiConsumer<ICitation, IGrouping> mappingFunction)
             throws ZoteroHttpStatusException {
-        CitationResults result = retrivalFunction.apply(info);
+        CitationResults result = retrievalFunction.apply(info, 0);
 
         long totalResults = result.getTotalResults();
         long pageCount = totalResults / pageSize + (totalResults % pageSize > 0 ? 1 : 0);
-        int currentPage = 0;
+        int currentPage = 1;
 
-        while (currentPage < pageCount) {
+        while (currentPage <= pageCount) {
             // we need to get the first page above to know who many pages there are,
             // afterwards though we need to retrieve the next one, hence this workaround
             if (result == null) {
-                result = zoteroManager.getCollectionItems(info.getZoteroId(), info.getZotero(), info.getGroupId(),
-                        info.getCollectionId(), currentPage, SORT_BY_TITLE, null);
+                try {
+                    TimeUnit.SECONDS.sleep(1);
+                } catch (InterruptedException e) {
+                    logger.error("Could not sleep.", e);
+                }
+                result = retrievalFunction.apply(info, currentPage);
             }
             for (ICitation citation : result.getCitations()) {
                 citation = citationRepository.save((Citation) citation);
@@ -155,19 +165,19 @@ public class CitationManager implements ICitationManager {
         }
     }
 
-    protected CitationResults getCollectionItems(JobInfo info) {
+    protected CitationResults getCollectionItems(JobInfo info, int page) {
         try {
             return zoteroManager.getCollectionItems(info.getZoteroId(), info.getZotero(),
-                    info.getGroupId(), info.getCollectionId(), 0, SORT_BY_TITLE, null);
+                    info.getGroupId(), info.getCollectionId(), page, SORT_BY_TITLE, null);
         } catch (ZoteroHttpStatusException ex) {
             throw new RuntimeException(ex);
         }
     }
     
-    protected CitationResults getGroupItems(JobInfo info) {
+    protected CitationResults getGroupItems(JobInfo info, int page) {
         try {
             return zoteroManager.getGroupItems(info.getZoteroId(), info.getZotero(),
-                        info.getGroupId(), 0, SORT_BY_TITLE, null);
+                        info.getGroupId(), page, SORT_BY_TITLE, null);
         } catch (ZoteroHttpStatusException e) {
             throw new RuntimeException(e);
         }
