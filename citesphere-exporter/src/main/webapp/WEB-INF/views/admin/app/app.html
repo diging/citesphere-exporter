@@ -1,0 +1,35 @@
+<html layout:decorate="~{layouts/main}">
+  <head>
+    <title>Authority Matcher</title>
+  </head>
+  <body>
+   <div layout:fragment="content">
+   
+      <div th:if="${app == null}" class="alert alert-danger" role="alert">
+        This app does not exist.
+      </div>
+      
+      <h1 th:if="${app}">App: <span th:text="${app.id}"></span></h1>
+      <table th:if="${app}" class="table table-striped">
+      <tr>
+        <td style="width: 100px;">Id</td>
+        <td><span th:text="${app.id}"></span></td>
+      </tr>
+      <tr>
+        <td>Name</td>
+        <td><span th:text="${app.appName}"></span></td>
+      </tr>
+      <tr>
+        <td>Description</td>
+        <td><span th:text="${app.description}"></span></td>
+      </tr>
+      
+      <tr class="warning">
+        <td>Access Token</td>
+        <td><span th:text="${token ?: 'For security reasons token will only be shown once after they have been created.'}">
+        </span>  
+      </tr>
+      </table>
+   </div>
+  </body>
+</html>

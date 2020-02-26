@@ -19,10 +19,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
+import edu.asu.diging.citesphere.exporter.core.data.DownloadTaskRepository;
 import edu.asu.diging.citesphere.exporter.core.exception.CitesphereCommunicationException;
 import edu.asu.diging.citesphere.exporter.core.exception.ExportFailedException;
 import edu.asu.diging.citesphere.exporter.core.exception.FileStorageException;
+import edu.asu.diging.citesphere.exporter.core.exception.MessageCreationException;
 import edu.asu.diging.citesphere.exporter.core.exception.ZoteroHttpStatusException;
+import edu.asu.diging.citesphere.exporter.core.kafka.IKafkaRequestProducer;
+import edu.asu.diging.citesphere.exporter.core.model.IDownloadTask;
+import edu.asu.diging.citesphere.exporter.core.model.impl.DownloadTask;
+import edu.asu.diging.citesphere.exporter.core.service.ICitationManager;
 import edu.asu.diging.citesphere.exporter.core.service.ICitesphereConnector;
 import edu.asu.diging.citesphere.exporter.core.service.IExportProcessor;
 import edu.asu.diging.citesphere.exporter.core.service.IFileStorageManager;
@@ -30,7 +36,11 @@ import edu.asu.diging.citesphere.exporter.core.service.iterator.CitationIterator
 import edu.asu.diging.citesphere.exporter.core.service.process.ExportType;
 import edu.asu.diging.citesphere.exporter.core.service.process.ExportWriter;
 import edu.asu.diging.citesphere.exporter.core.service.process.Processor;
+import edu.asu.diging.citesphere.messages.KafkaTopics;
+import edu.asu.diging.citesphere.messages.model.KafkaExportReturnMessage;
 import edu.asu.diging.citesphere.messages.model.KafkaJobMessage;
+import edu.asu.diging.citesphere.messages.model.ResponseCode;
+import edu.asu.diging.citesphere.messages.model.Status;
 
 @Service
 @Transactional
@@ -49,6 +59,12 @@ public class ExportProcessor implements IExportProcessor {
     
     @Autowired
     private ICitationManager citationManager;
+    
+    @Autowired
+    private IKafkaRequestProducer requestProducer;
+    
+    @Autowired
+    private DownloadTaskRepository downloadTaskRepo;
     
     private Map<ExportType, Processor> processors;
     
@@ -72,36 +88,61 @@ public class ExportProcessor implements IExportProcessor {
     @Override
     public void process(KafkaJobMessage message) {
         JobInfo info = null;
+        IDownloadTask downloadTask = new DownloadTask();
+        
         try {
             info = connector.getJobInfo(message.getId());
         } catch (CitesphereCommunicationException e) {
             // TODO: send back error message
             logger.error("Couldn't connect to citesphere", e);
+            sendMessage(message.getId(), null, Status.FAILED, ResponseCode.X20);
+            
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.X20);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
         }
 
+        downloadTask.setCitesphereTaskId(info.getTaskId());
+        downloadTask.setUsername(info.getUsername());
+        downloadTask.setContentType(info.getExportType().getContentType());
+        
         Processor processor = processors.get(info.getExportType());
         if (processor == null) {
             // TODO: send back error message
             logger.error("No processor available for " + info.getExportType());
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X30);
+            
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.X30);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
         }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd--HH-mm-ss");
         String time = LocalDateTime.now().format(formatter);
         String filename = "export-" + time + "." + processor.getFileExtension();
         
+        downloadTask.setFilename(filename);
         BufferedWriter writer = null;
         try {
             try {
                 writer = createWriter(info.getUsername(), info.getTaskId(), processor, filename);
             } catch (ExportFailedException e) {
-                // TODO: send back error message
                 logger.error("Could not create writer. Export failed for " + info.getTaskId());
+                sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
+                
+                downloadTask.setStatus(Status.FAILED);
+                downloadTask.setResponseCode(ResponseCode.X00);
+                downloadTaskRepo.save((DownloadTask)downloadTask);
                 return;
             }
         } catch (IOException e) {
-            // TODO: send back error message
             logger.error("Creating writer failed for " + info.getTaskId());
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
+                
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.X00);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
         }
         
@@ -109,8 +150,12 @@ public class ExportProcessor implements IExportProcessor {
         try {
             exportWriter = processor.getWriter(writer);
         } catch (IOException e) {
-            // TODO: send back error message
-            logger.error("Couldn't connect to citesphere", e);
+            logger.error("Couldn't create writer.", e);
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
+            
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.X00);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
         }
         
@@ -119,28 +164,50 @@ public class ExportProcessor implements IExportProcessor {
         try {
             citIterator = citationManager.getCitations(info);
         } catch (ZoteroHttpStatusException e) {
-            // TODO: send back error message
             logger.error("Couldn't retrieve citation from Zotero.", e);
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X40);
+            
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.X40);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
         }
         
+        boolean issueWritingRow = false;
         while(citIterator.hasNext()) {
             try {
                 exportWriter.writeRow(citIterator.next(), citIterator.getGrouping());
-            } catch (ExportFailedException | IOException e) {
-                // TODO: send back error message
-                logger.error("Couldn't write citations.", e);
-                return;
+            } catch (IOException e) {
+                logger.error("Couldn't write citation.", e);
+                issueWritingRow = true;
+                continue;
             }
+        }
+        
+        if (issueWritingRow) {
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.W10);
         }
         
         try {
             exportWriter.cleanUp();
         } catch (IOException e) {
-            // TODO: send back error message
             logger.error("Couldn't close writer.", e);
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.W10);
+            
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.W10);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
         }
+        
+        String path = storageManager.getFolderPath(downloadTask.getUsername(), downloadTask.getCitesphereTaskId());
+        File file = new File(path + File.separator + downloadTask.getFilename());
+        
+        downloadTask.setFileSize(file.length());
+        downloadTask.setStatus(Status.SUCCESS);
+        downloadTask.setResponseCode(ResponseCode.S00);
+        downloadTaskRepo.save((DownloadTask)downloadTask);
+        sendMessage(message.getId(), info.getUsername(), Status.DONE, ResponseCode.S00);
     }
     
     private BufferedWriter createWriter(String username, String taskId, Processor processor, String filename)
@@ -156,5 +223,17 @@ public class ExportProcessor implements IExportProcessor {
         
         BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath));
         return writer;
+    }
+    
+    private void sendMessage(String jobId, String username, Status status, ResponseCode code) {
+        KafkaExportReturnMessage returnMessage = new KafkaExportReturnMessage(username, jobId);
+        returnMessage.setStatus(status);
+        returnMessage.setCode(code);
+        try {
+            requestProducer.sendRequest(returnMessage, KafkaTopics.REFERENCES_IMPORT_DONE_TOPIC);
+        } catch (MessageCreationException e) {
+            // FIXME handle this case
+            logger.error("Exception sending message.", e);
+        }
     }
 }

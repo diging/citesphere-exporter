@@ -1,0 +1,26 @@
+<html layout:decorate="~{layouts/main}">
+  <head>
+    <title>Authority Matcher</title>
+  </head>
+  <body>
+   <div layout:fragment="content">
+   
+   <form action="#" th:action="@{/admin/app/add}" method="POST" th:object="${app}">
+        <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}" />
+        
+        <label>App name: </label>
+        <input th:field="*{appName}" class="form-control input-sm"></input>
+        <p class="text-danger"><th:errors path="appName"/></p>
+        
+        <label>Description: </label>
+        <input th:field="*{description}" class="form-control input-sm"></input>
+        <p class="text-danger"><th:errors path="description"/></p>
+    
+        <div style="padding-top: 20px;">
+        <button class="btn btn-sm btn-primary">Create App</button>
+        </div>
+   </form>
+   
+   </div>
+  </body>
+</html>

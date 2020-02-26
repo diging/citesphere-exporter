@@ -1,4 +1,4 @@
-package edu.asu.diging.citesphere.exporter.core.kafka;
+package edu.asu.diging.citesphere.exporter.core.kafka.impl;
 
 import java.io.IOException;
 

@@ -18,6 +18,7 @@ import edu.asu.diging.citesphere.data.bib.CitationRepository;
 import edu.asu.diging.citesphere.data.bib.CollectionCitationMappingRepository;
 import edu.asu.diging.citesphere.data.bib.GroupCitationMappingRepository;
 import edu.asu.diging.citesphere.exporter.core.exception.ZoteroHttpStatusException;
+import edu.asu.diging.citesphere.exporter.core.service.ICitationManager;
 import edu.asu.diging.citesphere.exporter.core.service.IZoteroManager;
 import edu.asu.diging.citesphere.exporter.core.service.iterator.CitationIterator;
 import edu.asu.diging.citesphere.exporter.core.service.iterator.impl.CollectionCitationIterator;

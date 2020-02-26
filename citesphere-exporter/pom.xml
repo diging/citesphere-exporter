@@ -21,6 +21,8 @@
         <simple-users-version>1.0-SNAPSHOT</simple-users-version>
 
         <admin.password>$2a$04$oQo44vqcDIFRoYKiAXoNheurzkwX9dcNmowvTX/hsWuBMwijqn44i</admin.password>
+        <!-- default key for development, change before deployment! -->
+        <exporter.jwt.secret>XRYeT8oeTw+lQeV7G97pjiP91OAtPq7afK0xcPLqXhWCj4BxgfDvFgjKZvMtly3scir4u3JHiitRSlVM8azV0A==</exporter.jwt.secret>
 
         <upload.folder.path></upload.folder.path>
 
@@ -271,7 +273,25 @@
             <version>1.7</version>
         </dependency>
 
-
+        <!-- JWT -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.11.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.11.0</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId> <!-- or jjwt-gson if Gson is preferred -->
+            <version>0.11.0</version>
+            <scope>runtime</scope>
+        </dependency>
+        
     </dependencies>
 
     <build>

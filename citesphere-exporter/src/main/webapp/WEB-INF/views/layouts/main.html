@@ -49,6 +49,9 @@
 	          	<li sec:authorize="hasRole('ADMIN')" role="presentation">
 	          		<a th:href="@{/admin/user/list}" >Users</a>
 	          	</li>
+	          	<li sec:authorize="hasRole('ADMIN')" role="presentation">
+                    <a th:href="@{/admin/app/list}" >Apps</a>
+                </li>
 	          	
 	          	<li sec:authorize="isAuthenticated()" role="presentation">
 	         	 	<form th:action="@{/logout}" method="POST">
@@ -67,8 +70,8 @@
 	         
 	        </nav>
         
-	        <h1><a class="appName" href="/">Awesome webapp</a></h1>
-	        <p class="lead">This is awesome.</p>   
+	        <h1><a class="appName" href="/">Citesphere Exporter</a></h1>
+	        <p class="lead">Your citations to somewhere else.</p>   
 	    </div>
       
       

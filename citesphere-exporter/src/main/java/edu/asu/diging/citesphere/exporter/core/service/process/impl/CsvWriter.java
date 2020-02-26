@@ -8,7 +8,6 @@ import java.util.Set;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 
-import edu.asu.diging.citesphere.exporter.core.exception.ExportFailedException;
 import edu.asu.diging.citesphere.exporter.core.service.process.ExportWriter;
 import edu.asu.diging.citesphere.model.bib.IAffiliation;
 import edu.asu.diging.citesphere.model.bib.ICitation;
@@ -48,7 +47,7 @@ public class CsvWriter implements ExportWriter {
      * @see edu.asu.diging.citesphere.exporter.core.service.process.impl.ExportWriter#writeRow(edu.asu.diging.citesphere.model.bib.ICitation)
      */
     @Override
-    public void writeRow(ICitation citation, IGrouping grouping) throws ExportFailedException, IOException {
+    public void writeRow(ICitation citation, IGrouping grouping) throws IOException {
 
         List<String> row = new ArrayList<>();
         row.add(citation.getKey());

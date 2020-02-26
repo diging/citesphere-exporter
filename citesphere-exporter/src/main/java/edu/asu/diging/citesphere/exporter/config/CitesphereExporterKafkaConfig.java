@@ -16,7 +16,7 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 
-import edu.asu.diging.citesphere.exporter.core.kafka.ReferenceExportListener;
+import edu.asu.diging.citesphere.exporter.core.kafka.impl.ReferenceExportListener;
 
 @Configuration
 @EnableKafka

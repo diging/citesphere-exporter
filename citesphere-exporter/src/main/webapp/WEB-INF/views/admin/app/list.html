@@ -1,0 +1,17 @@
+<html layout:decorate="~{layouts/main}">
+  <head>
+    <title>Authority Matcher</title>
+  </head>
+  <body>
+   <div layout:fragment="content">
+   <div>
+   <a href="#" th:href="@{|/admin/app/add|}" class="btn btn-primary">Add App</a>
+   </div>
+      <table style="margin-top: 20px;" class="table table-striped">
+      <tr th:each="app : ${apps}">
+        <td><span th:text="${app.appName}"></span></td>
+      </tr>
+      </table>
+   </div>
+  </body>
+</html>
