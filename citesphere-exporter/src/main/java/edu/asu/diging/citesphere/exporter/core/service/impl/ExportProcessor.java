@@ -230,7 +230,7 @@ public class ExportProcessor implements IExportProcessor {
         returnMessage.setStatus(status);
         returnMessage.setCode(code);
         try {
-            requestProducer.sendRequest(returnMessage, KafkaTopics.REFERENCES_IMPORT_DONE_TOPIC);
+            requestProducer.sendRequest(returnMessage, KafkaTopics.REFERENCES_EXPORT_DONE_TOPIC);
         } catch (MessageCreationException e) {
             // FIXME handle this case
             logger.error("Exception sending message.", e);
