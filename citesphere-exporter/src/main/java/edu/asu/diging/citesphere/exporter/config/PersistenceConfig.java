@@ -24,7 +24,7 @@ import com.zaxxer.hikari.HikariDataSource;
 @Configuration
 @PropertySource("classpath:config.properties")
 @EnableTransactionManagement
-@EnableJpaRepositories(basePackages = { "edu.asu.diging.citesphere.exporter.core.data", "edu.asu.diging.simpleusers.core.data" })
+@EnableJpaRepositories(basePackages = { "edu.asu.diging.citesphere.exporter.core.data", "edu.asu.diging.simpleusers.core.data", "edu.asu.diging.citesphere.data", "edu.asu.diging.citesphere.exporter.core.data" })
 public class PersistenceConfig {
 
     @Autowired
@@ -45,7 +45,7 @@ public class PersistenceConfig {
     public LocalContainerEntityManagerFactoryBean entityManagerFactory() {
         LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
         em.setDataSource(dataSource());
-        em.setPackagesToScan(new String[] { "edu.asu.diging.citesphere_exporter.core.model", "edu.asu.diging.simpleusers.core.model" });
+        em.setPackagesToScan(new String[] { "edu.asu.diging.citesphere_exporter.core.model", "edu.asu.diging.simpleusers.core.model", "edu.asu.diging.citesphere.model", "edu.asu.diging.citesphere.user", "edu.asu.diging.citesphere.exporter.core.model" });
 
         JpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
         em.setJpaVendorAdapter(vendorAdapter);
@@ -70,7 +70,7 @@ public class PersistenceConfig {
     Properties additionalProperties() {
         Properties properties = new Properties();
         properties.setProperty("hibernate.hbm2ddl.auto", "update");
-        properties.setProperty("hibernate.dialect", "org.hibernate.dialect.MySQL5Dialect");
+        properties.setProperty("hibernate.dialect", env.getRequiredProperty("db.hibernate.dialect"));
         properties.setProperty("hibernate.show_sql", "true");
         properties.setProperty("hibernate.id.new_generator_mappings", "true");
 
