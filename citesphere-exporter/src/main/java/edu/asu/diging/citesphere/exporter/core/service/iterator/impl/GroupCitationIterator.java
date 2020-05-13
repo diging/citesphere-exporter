@@ -40,7 +40,7 @@ public class GroupCitationIterator implements Iterator<ICitation>, CitationItera
             return false;
         }
         
-        if (mappings == null || !mappings.hasNext()) {
+        if (mappings == null || (!mappings.hasNext() && currentPage<=totalPages) ) {
             List<GroupCitationMapping> ccMappings = repo.findByGroup((CitationGroup)group, PageRequest.of(currentPage, pageSize));
             currentPage += 1;
             mappings = ccMappings.iterator();
