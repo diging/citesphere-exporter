@@ -85,6 +85,9 @@ public class CitationManager implements ICitationManager {
             if (latestGroup.getVersion() != groupOptional.get().getVersion()) {
                 updateCitations(info, groupOptional.get());
             }
+//            else {
+//                updateLocalCitations(latestGroup, groupOptional.get(), info);
+//            }
             group = groupOptional.get();
         } else {
             group = createGroupCitations(info);
@@ -107,6 +110,23 @@ public class CitationManager implements ICitationManager {
         }
         return new CollectionCitationIterator(ccMappingRepo, citationCollection, pageSize);
     }
+    
+//    private void updateLocalCitations(ICitationGroup latestGroup, CitationGroup citationGroup, JobInfo info) throws ZoteroHttpStatusException {
+//        long totalResults = latestGroup.getNumItems();
+//        long pageCount = totalResults / pageSize + (totalResults % pageSize > 0 ? 1 : 0);
+//        int currentPage = 0;
+//        
+//        CitationResults results = null;
+//        while (currentPage <= pageCount) {
+//            results = zoteroManager.getGroupItems(info.getZoteroId(), info.getZotero(), info.getGroupId(), currentPage, "title", latestGroup.getVersion());
+//            
+//            if (!results.isNotModified()) {
+//                updateCitations(info, citationGroup);
+//                break;
+//            } 
+//            currentPage += 1;
+//        }
+//    }
 
     protected ICitationCollection createCitations(JobInfo info) throws ZoteroHttpStatusException {
         ICitationCollection collection = zoteroManager.getCitationCollection(info.getZoteroId(), info.getZotero(),
