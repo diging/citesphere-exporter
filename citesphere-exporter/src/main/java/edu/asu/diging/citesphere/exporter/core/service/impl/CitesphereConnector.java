@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.DefaultResponseErrorHandler;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -138,7 +139,13 @@ public class CitesphereConnector implements ICitesphereConnector {
         HttpEntity<String> entity = new HttpEntity<>("body", headers);
 
         // not working? FIXME
-        ResponseEntity<String> response = restTemplate.exchange("api/v1/oauth/token?grant_type=client_credentials", HttpMethod.POST, entity, String.class);
+        ResponseEntity<String> response;
+        try {
+            response = restTemplate.exchange("api/v1/oauth/token?grant_type=client_credentials", HttpMethod.POST, entity, String.class);
+        } catch (ResourceAccessException ex) {
+            logger.error("Could not get token.", ex);
+            return null;
+        }
         
         ObjectMapper mapper = new ObjectMapper();
         JsonNode node = null;
