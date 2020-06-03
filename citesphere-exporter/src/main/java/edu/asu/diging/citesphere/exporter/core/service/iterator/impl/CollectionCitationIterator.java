@@ -40,7 +40,7 @@ public class CollectionCitationIterator implements Iterator<ICitation>, Citation
             return false;
         }
         
-        if (mappings == null) {
+        if (mappings == null || (!mappings.hasNext()  && currentPage<=totalPages)) {
             List<CollectionCitationMapping> ccMappings = repo.findByCollection((CitationCollection)collection, PageRequest.of(currentPage, pageSize));
             currentPage += 1;
             mappings = ccMappings.iterator();
