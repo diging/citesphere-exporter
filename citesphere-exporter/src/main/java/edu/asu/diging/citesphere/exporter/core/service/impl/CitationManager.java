@@ -202,50 +202,45 @@ public class CitationManager implements ICitationManager {
             }
         }
         
+        updateRelations(citation, existingCitation);
+        
+        return existingCitation;
+    }
+
+    private void updateRelations(ICitation citation, Citation existingCitation) {
         if (existingCitation.getReferences() != null) {
             existingCitation.getReferences().clear();
         } else {
             existingCitation.setReferences(new HashSet<>());
         }
-        if (citation.getReferences() != null) {
-            existingCitation.getReferences().addAll(citation.getReferences());
-        }
+        existingCitation.getReferences().addAll(citation.getReferences());
         
         if (existingCitation.getConceptTags() != null) {
             existingCitation.getConceptTags().clear();
         }
-        if (citation.getConceptTags() != null) {
-            existingCitation.getConceptTags().addAll(citation.getConceptTags());
-        }
+        existingCitation.getConceptTags().addAll(citation.getConceptTags());
         
         if (existingCitation.getOtherCreatorRoles() != null) {
             existingCitation.getOtherCreatorRoles().clear();
         } else {
             existingCitation.setOtherCreators(new HashSet<>());
         }
-        if (citation.getOtherCreatorRoles() != null) {
-            existingCitation.getOtherCreatorRoles().addAll(citation.getOtherCreatorRoles());
-        }
+        existingCitation.getOtherCreatorRoles().addAll(citation.getOtherCreatorRoles());
         
         if (existingCitation.getAuthors() != null) {
             existingCitation.getAuthors().clear();
         } else {
             existingCitation.setAuthors(new HashSet<>());
         }
-        if (citation.getAuthors() != null) {
-            existingCitation.getAuthors().addAll(citation.getAuthors());
-        }
+        existingCitation.getAuthors().addAll(citation.getAuthors());
+        
         
         if (existingCitation.getEditors() != null) {
             existingCitation.getEditors().clear();
         } else {
             existingCitation.setEditors(new HashSet<>());
         }
-        if (existingCitation.getEditors() != null) {
-            existingCitation.getEditors().addAll(citation.getEditors());
-        }
-        
-        return existingCitation;
+        existingCitation.getEditors().addAll(citation.getEditors());
     }
 
     protected CitationResults getCollectionItems(JobInfo info, int page) {
