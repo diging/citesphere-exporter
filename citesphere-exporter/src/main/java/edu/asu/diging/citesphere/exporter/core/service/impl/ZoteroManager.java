@@ -85,4 +85,9 @@ public class ZoteroManager implements IZoteroManager {
         results.setCitations(citations);
         return results;
     }
+    
+    @Override
+    public boolean isGroupModified(String zoteroUserId, String token, String groupId, long lastGroupVersion) throws ZoteroHttpStatusException {
+        return zoteroConnector.isGroupModified(zoteroUserId, token, groupId, lastGroupVersion);
+    }
 }

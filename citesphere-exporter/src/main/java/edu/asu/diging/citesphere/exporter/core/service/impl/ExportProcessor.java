@@ -17,13 +17,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.data.util.CloseableIterator;
 import org.springframework.stereotype.Service;
 
 import edu.asu.diging.citesphere.exporter.core.data.DownloadTaskRepository;
 import edu.asu.diging.citesphere.exporter.core.exception.CitesphereCommunicationException;
 import edu.asu.diging.citesphere.exporter.core.exception.ExportFailedException;
 import edu.asu.diging.citesphere.exporter.core.exception.FileStorageException;
+import edu.asu.diging.citesphere.exporter.core.exception.GroupDoesNotExistException;
 import edu.asu.diging.citesphere.exporter.core.exception.MessageCreationException;
+import edu.asu.diging.citesphere.exporter.core.exception.OutOfDateException;
 import edu.asu.diging.citesphere.exporter.core.exception.ZoteroHttpStatusException;
 import edu.asu.diging.citesphere.exporter.core.kafka.IKafkaRequestProducer;
 import edu.asu.diging.citesphere.exporter.core.model.IDownloadTask;
@@ -32,7 +35,6 @@ import edu.asu.diging.citesphere.exporter.core.service.ICitationManager;
 import edu.asu.diging.citesphere.exporter.core.service.ICitesphereConnector;
 import edu.asu.diging.citesphere.exporter.core.service.IExportProcessor;
 import edu.asu.diging.citesphere.exporter.core.service.IFileStorageManager;
-import edu.asu.diging.citesphere.exporter.core.service.iterator.CitationIterator;
 import edu.asu.diging.citesphere.exporter.core.service.process.ExportType;
 import edu.asu.diging.citesphere.exporter.core.service.process.ExportWriter;
 import edu.asu.diging.citesphere.exporter.core.service.process.Processor;
@@ -41,6 +43,9 @@ import edu.asu.diging.citesphere.messages.model.KafkaExportReturnMessage;
 import edu.asu.diging.citesphere.messages.model.KafkaJobMessage;
 import edu.asu.diging.citesphere.messages.model.ResponseCode;
 import edu.asu.diging.citesphere.messages.model.Status;
+import edu.asu.diging.citesphere.model.bib.ICitation;
+import edu.asu.diging.citesphere.model.bib.ICitationCollection;
+import edu.asu.diging.citesphere.model.bib.ICitationGroup;
 
 @Service
 @Transactional
@@ -160,9 +165,9 @@ public class ExportProcessor implements IExportProcessor {
         }
         
         // get citations and write
-        CitationIterator citIterator;
+        CloseableIterator<ICitation> citIterator;
         try {
-            citIterator = citationManager.getCitations(info);
+            citIterator = citationManager.getAllGroupItems(info);
         } catch (ZoteroHttpStatusException e) {
             logger.error("Couldn't retrieve citation from Zotero.", e);
             sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X40);
@@ -171,12 +176,35 @@ public class ExportProcessor implements IExportProcessor {
             downloadTask.setResponseCode(ResponseCode.X40);
             downloadTaskRepo.save((DownloadTask)downloadTask);
             return;
+        } catch (GroupDoesNotExistException e) {
+            logger.error("Group does not exist: " + info.getGroupId(), e);
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X50);
+            
+            downloadTask.setStatus(Status.FAILED);
+            downloadTask.setResponseCode(ResponseCode.X50);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
+            return;
+        } catch (OutOfDateException e) {
+            logger.error("Group is out of date, wait for syncing.", e);
+            sendMessage(message.getId(), info.getUsername(), Status.SYNCING_RETRY, ResponseCode.P10);
+            
+            downloadTask.setStatus(Status.SYNCING_RETRY);
+            downloadTask.setResponseCode(ResponseCode.P10);
+            downloadTaskRepo.save((DownloadTask)downloadTask);
+            return;
         }
         
         boolean issueWritingRow = false;
         while(citIterator.hasNext()) {
             try {
-                exportWriter.writeRow(citIterator.next(), citIterator.getGrouping());
+                ICitation citation = citIterator.next();
+                ICitationCollection collection = null;
+                if (citation.getCollections() != null && !citation.getCollections().isEmpty()) {
+                    // lets take first for now
+                    collection = citationManager.getCollection(info);
+                }
+                ICitationGroup group = citationManager.getGroup(info);
+                exportWriter.writeRow(citIterator.next(), group, collection);
             } catch (IOException e) {
                 logger.error("Couldn't write citation.", e);
                 issueWritingRow = true;

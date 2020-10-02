@@ -17,4 +17,6 @@ public interface IZoteroManager {
 
     ICitationCollection getCitationCollection(String zoteroUserId, String token, String groupId, String collectionId);
 
+    boolean isGroupModified(String zoteroUserId, String token, String groupId, long lastGroupVersion) throws ZoteroHttpStatusException;
+
 }
