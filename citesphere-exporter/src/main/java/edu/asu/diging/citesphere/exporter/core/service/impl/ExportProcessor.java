@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 
 import javax.annotation.PostConstruct;
 import javax.transaction.Transactional;
@@ -58,21 +60,20 @@ public class ExportProcessor implements IExportProcessor {
 
     @Autowired
     private ApplicationContext ctx;
-    
+
     @Autowired
     private IFileStorageManager storageManager;
-    
+
     @Autowired
     private ICitationManager citationManager;
-    
+
     @Autowired
     private IKafkaRequestProducer requestProducer;
-    
+
     @Autowired
     private DownloadTaskRepository downloadTaskRepo;
-    
+
     private Map<ExportType, Processor> processors;
-    
 
     @PostConstruct
     public void init() {
@@ -94,108 +95,86 @@ public class ExportProcessor implements IExportProcessor {
     public void process(KafkaJobMessage message) {
         JobInfo info = null;
         IDownloadTask downloadTask = new DownloadTask();
-        
         try {
             info = connector.getJobInfo(message.getId());
         } catch (CitesphereCommunicationException e) {
             // TODO: send back error message
             logger.error("Couldn't connect to citesphere", e);
-            sendMessage(message.getId(), null, Status.FAILED, ResponseCode.X20);
-            
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.X20);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X20, info, downloadTask);
             return;
         }
+        
+        
+        Optional<DownloadTask> taskOptional = downloadTaskRepo.findFirstByCitesphereTaskId(info.getTaskId());
+        if (taskOptional.isPresent()) {
+            // if this is a retry due to syncing, there will already be a task object
+            downloadTask = taskOptional.get();
+        } 
+
 
         downloadTask.setCitesphereTaskId(info.getTaskId());
         downloadTask.setUsername(info.getUsername());
         downloadTask.setContentType(info.getExportType().getContentType());
-        
+
         Processor processor = processors.get(info.getExportType());
         if (processor == null) {
             // TODO: send back error message
             logger.error("No processor available for " + info.getExportType());
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X30);
-            
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.X30);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X30, info, downloadTask);
             return;
         }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd--HH-mm-ss");
         String time = LocalDateTime.now().format(formatter);
         String filename = "export-" + time + "." + processor.getFileExtension();
-        
+
         downloadTask.setFilename(filename);
         BufferedWriter writer = null;
         try {
             try {
                 writer = createWriter(info.getUsername(), info.getTaskId(), processor, filename);
             } catch (ExportFailedException e) {
-                logger.error("Could not create writer. Export failed for " + info.getTaskId());
-                sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
-                
-                downloadTask.setStatus(Status.FAILED);
-                downloadTask.setResponseCode(ResponseCode.X00);
-                downloadTaskRepo.save((DownloadTask)downloadTask);
+                logger.error("Could not create writer. Export failed for " + info.getTaskId(), e);
+                updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
                 return;
             }
         } catch (IOException e) {
-            logger.error("Creating writer failed for " + info.getTaskId());
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
-                
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.X00);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            logger.error("Creating writer failed for " + info.getTaskId(), e);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
             return;
         }
-        
+
         ExportWriter exportWriter;
         try {
             exportWriter = processor.getWriter(writer);
         } catch (IOException e) {
             logger.error("Couldn't create writer.", e);
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
-            
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.X00);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
             return;
         }
-        
+
         // get citations and write
         CloseableIterator<ICitation> citIterator;
         try {
             citIterator = citationManager.getAllGroupItems(info);
         } catch (ZoteroHttpStatusException e) {
             logger.error("Couldn't retrieve citation from Zotero.", e);
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X40);
-            
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.X40);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X40, info, downloadTask);
             return;
         } catch (GroupDoesNotExistException e) {
             logger.error("Group does not exist: " + info.getGroupId(), e);
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X50);
-            
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.X50);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X50, info, downloadTask);
             return;
         } catch (OutOfDateException e) {
-            logger.error("Group is out of date, wait for syncing.", e);
-            sendMessage(message.getId(), info.getUsername(), Status.SYNCING_RETRY, ResponseCode.P10);
+            logger.warn("Group is out of date, wait for syncing.");
+            updateTaskAndSendMessage(message, Status.SYNCING_RETRY, ResponseCode.P10, info, downloadTask);
             
-            downloadTask.setStatus(Status.SYNCING_RETRY);
-            downloadTask.setResponseCode(ResponseCode.P10);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            // delete unused file
+            deleteFile(info.getUsername(), downloadTask.getId(), filename);
             return;
         }
-        
+
         boolean issueWritingRow = false;
-        while(citIterator.hasNext()) {
+        while (citIterator.hasNext()) {
             try {
                 ICitation citation = citIterator.next();
                 ICitationCollection collection = null;
@@ -204,55 +183,66 @@ public class ExportProcessor implements IExportProcessor {
                     collection = citationManager.getCollection(info);
                 }
                 ICitationGroup group = citationManager.getGroup(info);
-                exportWriter.writeRow(citIterator.next(), group, collection);
+                exportWriter.writeRow(citation, group, collection);
             } catch (IOException e) {
                 logger.error("Couldn't write citation.", e);
                 issueWritingRow = true;
                 continue;
+            } catch (NoSuchElementException e) {
+                sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.X00);
+                break;
             }
         }
-        
+
         if (issueWritingRow) {
             sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.W10);
         }
-        
+
         try {
             exportWriter.cleanUp();
         } catch (IOException e) {
             logger.error("Couldn't close writer.", e);
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.W10);
-            
-            downloadTask.setStatus(Status.FAILED);
-            downloadTask.setResponseCode(ResponseCode.W10);
-            downloadTaskRepo.save((DownloadTask)downloadTask);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.W10, info, downloadTask);
             return;
         }
-        
+
         String path = storageManager.getFolderPath(downloadTask.getUsername(), downloadTask.getCitesphereTaskId());
         File file = new File(path + File.separator + downloadTask.getFilename());
-        
+
         downloadTask.setFileSize(file.length());
         downloadTask.setStatus(Status.SUCCESS);
         downloadTask.setResponseCode(ResponseCode.S00);
-        downloadTaskRepo.save((DownloadTask)downloadTask);
+        downloadTaskRepo.save((DownloadTask) downloadTask);
         sendMessage(message.getId(), info.getUsername(), Status.DONE, ResponseCode.S00);
     }
-    
+
+    private void updateTaskAndSendMessage(KafkaJobMessage message, Status status, ResponseCode code, JobInfo info,
+            IDownloadTask downloadTask) {
+        sendMessage(message.getId(), info.getUsername(), status, code);
+
+        downloadTask.setStatus(status);
+        downloadTask.setResponseCode(code);
+        downloadTaskRepo.save((DownloadTask) downloadTask);
+    }
+
     private BufferedWriter createWriter(String username, String taskId, Processor processor, String filename)
             throws ExportFailedException, IOException {
-         try {
+        try {
             storageManager.saveFile(username, taskId, filename, new byte[0]);
         } catch (FileStorageException e) {
             throw new ExportFailedException("Could not create export file.", e);
         }
-        
+
         String filePath = storageManager.getFolderPath(username, taskId);
         filePath += File.separator + filename;
-        
-        BufferedWriter writer = Files.newBufferedWriter(Paths.get(filePath));
-        return writer;
+
+        return Files.newBufferedWriter(Paths.get(filePath));
     }
-    
+
+    private void deleteFile(String username, String taskId, String filename) {
+        storageManager.deleteFile(username, taskId, filename, false);
+    }
+
     private void sendMessage(String jobId, String username, Status status, ResponseCode code) {
         KafkaExportReturnMessage returnMessage = new KafkaExportReturnMessage(username, jobId);
         returnMessage.setStatus(status);

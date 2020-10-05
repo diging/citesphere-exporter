@@ -27,7 +27,7 @@ import com.mongodb.client.MongoClients;
 
 @Configuration
 @PropertySource({ "classpath:config.properties" })
-@EnableMongoRepositories({ "edu.asu.diging.citesphere.core.mongo", "edu.asu.diging.citesphere.data.bib" })
+@EnableMongoRepositories({ "edu.asu.diging.citesphere.data.bib" })
 public class MongoConfig {
 
     @Value("${mongo.database.name}")

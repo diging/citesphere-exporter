@@ -53,7 +53,7 @@ public class CsvWriter implements ExportWriter {
 
         List<String> row = new ArrayList<>();
         row.add(citation.getKey());
-        row.add(group.getKey() + "");
+        row.add(group.getGroupId() + "");
         row.add(group.getName());
         row.add(collection != null ? collection.getKey() : "");
         row.add(collection != null ? collection.getName() : "");
