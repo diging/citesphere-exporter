@@ -93,56 +93,33 @@ public class ExportProcessor implements IExportProcessor {
      */
     @Override
     public void process(KafkaJobMessage message) {
-        JobInfo info = null;
-        IDownloadTask downloadTask = new DownloadTask();
-        try {
-            info = connector.getJobInfo(message.getId());
-        } catch (CitesphereCommunicationException e) {
-            // TODO: send back error message
-            logger.error("Couldn't connect to citesphere", e);
-            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X20, info, downloadTask);
+        JobInfo info = getJobInfo(message);
+        if (info == null) {
             return;
         }
         
-        
         Optional<DownloadTask> taskOptional = downloadTaskRepo.findFirstByCitesphereTaskId(info.getTaskId());
-        if (taskOptional.isPresent()) {
-            // if this is a retry due to syncing, there will already be a task object
-            downloadTask = taskOptional.get();
-        } 
-
-
+        IDownloadTask downloadTask = taskOptional.isPresent() ? taskOptional.get() : new DownloadTask();
+        
         downloadTask.setCitesphereTaskId(info.getTaskId());
         downloadTask.setUsername(info.getUsername());
         downloadTask.setContentType(info.getExportType().getContentType());
 
         Processor processor = processors.get(info.getExportType());
         if (processor == null) {
-            // TODO: send back error message
             logger.error("No processor available for " + info.getExportType());
             updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X30, info, downloadTask);
             return;
         }
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd--HH-mm-ss");
-        String time = LocalDateTime.now().format(formatter);
-        String filename = "export-" + time + "." + processor.getFileExtension();
-
+        
+        String filename = createFilename(processor);
         downloadTask.setFilename(filename);
-        BufferedWriter writer = null;
-        try {
-            try {
-                writer = createWriter(info.getUsername(), info.getTaskId(), processor, filename);
-            } catch (ExportFailedException e) {
-                logger.error("Could not create writer. Export failed for " + info.getTaskId(), e);
-                updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
-                return;
-            }
-        } catch (IOException e) {
-            logger.error("Creating writer failed for " + info.getTaskId(), e);
-            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
+        
+        BufferedWriter writer = createWriter(message, info, downloadTask, processor, filename);
+        if (writer == null) {
             return;
         }
-
+        
         ExportWriter exportWriter;
         try {
             exportWriter = processor.getWriter(writer);
@@ -153,26 +130,41 @@ public class ExportProcessor implements IExportProcessor {
         }
 
         // get citations and write
-        CloseableIterator<ICitation> citIterator;
+        CloseableIterator<ICitation> citIterator = createIterator(message, info, downloadTask, filename);
+        if (citIterator == null) {
+            return;
+        }
+        
+        boolean issueWritingRow = writeCitations(message, info, exportWriter, citIterator);
+
+        if (issueWritingRow) {
+            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.W10);
+        }
+
         try {
-            citIterator = citationManager.getAllGroupItems(info);
-        } catch (ZoteroHttpStatusException e) {
-            logger.error("Couldn't retrieve citation from Zotero.", e);
-            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X40, info, downloadTask);
-            return;
-        } catch (GroupDoesNotExistException e) {
-            logger.error("Group does not exist: " + info.getGroupId(), e);
-            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X50, info, downloadTask);
-            return;
-        } catch (OutOfDateException e) {
-            logger.warn("Group is out of date, wait for syncing.");
-            updateTaskAndSendMessage(message, Status.SYNCING_RETRY, ResponseCode.P10, info, downloadTask);
-            
-            // delete unused file
-            deleteFile(info.getUsername(), downloadTask.getId(), filename);
+            exportWriter.cleanUp();
+        } catch (IOException e) {
+            logger.error("Couldn't close writer.", e);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.W10, info, downloadTask);
             return;
         }
 
+        saveFinalStatus(downloadTask);
+        sendMessage(message.getId(), info.getUsername(), Status.DONE, ResponseCode.S00);
+    }
+
+    private void saveFinalStatus(IDownloadTask downloadTask) {
+        String path = storageManager.getFolderPath(downloadTask.getUsername(), downloadTask.getCitesphereTaskId());
+        File file = new File(path + File.separator + downloadTask.getFilename());
+
+        downloadTask.setFileSize(file.length());
+        downloadTask.setStatus(Status.SUCCESS);
+        downloadTask.setResponseCode(ResponseCode.S00);
+        downloadTaskRepo.save((DownloadTask) downloadTask);
+    }
+
+    private boolean writeCitations(KafkaJobMessage message, JobInfo info, ExportWriter exportWriter,
+            CloseableIterator<ICitation> citIterator) {
         boolean issueWritingRow = false;
         while (citIterator.hasNext()) {
             try {
@@ -193,27 +185,63 @@ public class ExportProcessor implements IExportProcessor {
                 break;
             }
         }
+        return issueWritingRow;
+    }
 
-        if (issueWritingRow) {
-            sendMessage(message.getId(), info.getUsername(), Status.FAILED, ResponseCode.W10);
-        }
-
+    private CloseableIterator<ICitation> createIterator(KafkaJobMessage message, JobInfo info,
+            IDownloadTask downloadTask, String filename) {
+        CloseableIterator<ICitation> citIterator = null;
         try {
-            exportWriter.cleanUp();
-        } catch (IOException e) {
-            logger.error("Couldn't close writer.", e);
-            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.W10, info, downloadTask);
-            return;
+            citIterator = citationManager.getAllGroupItems(info);
+        } catch (ZoteroHttpStatusException e) {
+            logger.error("Couldn't retrieve citation from Zotero.", e);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X40, info, downloadTask);
+        } catch (GroupDoesNotExistException e) {
+            logger.error("Group does not exist: " + info.getGroupId(), e);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X50, info, downloadTask);
+        } catch (OutOfDateException e) {
+            logger.warn("Group is out of date, wait for syncing.");
+            updateTaskAndSendMessage(message, Status.SYNCING_RETRY, ResponseCode.P10, info, downloadTask);
+            
+            // delete unused file
+            deleteFile(info.getUsername(), downloadTask.getId(), filename);
         }
+        return citIterator;
+    }
 
-        String path = storageManager.getFolderPath(downloadTask.getUsername(), downloadTask.getCitesphereTaskId());
-        File file = new File(path + File.separator + downloadTask.getFilename());
+    private BufferedWriter createWriter(KafkaJobMessage message, JobInfo info, IDownloadTask downloadTask,
+            Processor processor, String filename) {
+        BufferedWriter writer = null;
+        try {
+            try {
+                writer = createWriter(info.getUsername(), info.getTaskId(), processor, filename);
+            } catch (ExportFailedException e) {
+                logger.error("Could not create writer. Export failed for " + info.getTaskId(), e);
+                updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
+            }
+        } catch (IOException e) {
+            logger.error("Creating writer failed for " + info.getTaskId(), e);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X00, info, downloadTask);
+        }
+        return writer;
+    }
 
-        downloadTask.setFileSize(file.length());
-        downloadTask.setStatus(Status.SUCCESS);
-        downloadTask.setResponseCode(ResponseCode.S00);
-        downloadTaskRepo.save((DownloadTask) downloadTask);
-        sendMessage(message.getId(), info.getUsername(), Status.DONE, ResponseCode.S00);
+    private String createFilename(Processor processor) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd--HH-mm-ss");
+        String time = LocalDateTime.now().format(formatter);
+        return "export-" + time + "." + processor.getFileExtension();
+    }
+
+    private JobInfo getJobInfo(KafkaJobMessage message) {
+        JobInfo info = null;
+        try {
+            info = connector.getJobInfo(message.getId());
+        } catch (CitesphereCommunicationException e) {
+            // TODO: send back error message
+            logger.error("Couldn't connect to citesphere", e);
+            updateTaskAndSendMessage(message, Status.FAILED, ResponseCode.X20, info, new DownloadTask());
+        }
+        return info;
     }
 
     private void updateTaskAndSendMessage(KafkaJobMessage message, Status status, ResponseCode code, JobInfo info,
