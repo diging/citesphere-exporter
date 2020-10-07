@@ -10,7 +10,7 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 @Configuration
 @EnableWebMvc
 @EnableAspectJAutoProxy
-@ComponentScan({"edu.asu.diging.citesphere.exporter", "edu.asu.diging.simpleusers.core", "edu.asu.diging.citesphere.factory"})
+@ComponentScan({"edu.asu.diging.citesphere.exporter", "edu.asu.diging.simpleusers.core", "edu.asu.diging.citesphere.factory", "edu.asu.diging.citesphere.data" })
 public class RootConfig {
 
     @Bean
