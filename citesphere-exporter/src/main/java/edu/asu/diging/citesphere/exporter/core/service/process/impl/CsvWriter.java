@@ -11,9 +11,10 @@ import org.apache.commons.csv.CSVPrinter;
 import edu.asu.diging.citesphere.exporter.core.service.process.ExportWriter;
 import edu.asu.diging.citesphere.model.bib.IAffiliation;
 import edu.asu.diging.citesphere.model.bib.ICitation;
+import edu.asu.diging.citesphere.model.bib.ICitationCollection;
 import edu.asu.diging.citesphere.model.bib.ICitationConceptTag;
+import edu.asu.diging.citesphere.model.bib.ICitationGroup;
 import edu.asu.diging.citesphere.model.bib.ICreator;
-import edu.asu.diging.citesphere.model.bib.IGrouping;
 import edu.asu.diging.citesphere.model.bib.IPerson;
 
 public class CsvWriter implements ExportWriter {
@@ -26,8 +27,9 @@ public class CsvWriter implements ExportWriter {
     }
 
     public void init() throws IOException {
-        CSVFormat format = CSVFormat.DEFAULT.withHeader("Key", "Group/Collection Id", "Group/Collection Name", "Type", "Title", "Date",
-                "Authors", "Editors", "Other Creators", "Publication Title", "Volume", "Issue", "Pages", "Series",
+        CSVFormat format = CSVFormat.DEFAULT.withHeader("Key", "Group Id", "Group Name", "Collection Id", "Collection Name",
+                "Type", "Title", "Date", "Authors", "Editors", "Other Creators",
+                "Publication Title", "Volume", "Issue", "Pages", "Series",
                 "Series Title", "URL", "Abstract", "Access Date", "Series Text", "Journal Abbreviation", "Language",
                 "DOI", "ISSN", "Short Title", "Archive", "Archive Location", "Library Catalog", "Call Number", "Rights",
                 "Date Added", "Date Modified", "Concept Tags", "Extra", "Version");
@@ -47,12 +49,14 @@ public class CsvWriter implements ExportWriter {
      * @see edu.asu.diging.citesphere.exporter.core.service.process.impl.ExportWriter#writeRow(edu.asu.diging.citesphere.model.bib.ICitation)
      */
     @Override
-    public void writeRow(ICitation citation, IGrouping grouping) throws IOException {
+    public void writeRow(ICitation citation, ICitationGroup group, ICitationCollection collection) throws IOException {
 
         List<String> row = new ArrayList<>();
         row.add(citation.getKey());
-        row.add(grouping.getKey() + "");
-        row.add(grouping.getName());
+        row.add(group.getGroupId() + "");
+        row.add(group.getName());
+        row.add(collection != null ? collection.getKey() : "");
+        row.add(collection != null ? collection.getName() : "");
         row.add(citation.getItemType().getZoteroKey());
         row.add(citation.getTitle());
         row.add(citation.getDateFreetext());

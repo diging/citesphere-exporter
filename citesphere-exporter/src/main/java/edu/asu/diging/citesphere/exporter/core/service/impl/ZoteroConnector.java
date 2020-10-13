@@ -20,6 +20,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import edu.asu.diging.citesphere.exporter.core.exception.AccessForbiddenException;
 import edu.asu.diging.citesphere.exporter.core.exception.ZoteroHttpStatusException;
 import edu.asu.diging.citesphere.exporter.core.service.IZoteroConnector;
+import edu.asu.diging.citesphere.user.IUser;
 
 @Component
 @PropertySource("classpath:/config.properties")
@@ -108,6 +109,16 @@ public class ZoteroConnector implements IZoteroConnector {
         return zotero.getGroupCollectionsOperations().getItems(groupId, collectionId, page * zoteroPageSize,
                 zoteroPageSize, sortBy, lastGroupVersion);
         } catch(HttpClientErrorException ex) {
+            throw createException(ex.getStatusCode(), ex);
+        }
+    }
+    
+    @Override
+    public boolean isGroupModified(String zoteroUserId, String token, String groupId, Long lastGroupVersion) throws ZoteroHttpStatusException {
+        Zotero zotero = getApi(zoteroUserId, token);
+        try {
+            return !zotero.getGroupsOperations().getGroupItemsTop(groupId, 1, 1, "title", lastGroupVersion).getNotModified();
+        } catch (HttpClientErrorException ex) {
             throw createException(ex.getStatusCode(), ex);
         }
     }
