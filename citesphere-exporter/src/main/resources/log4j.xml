@@ -11,7 +11,7 @@
     </appender>
     
     <appender name="FILE" class="org.apache.log4j.FileAppender">
-      <param name="file" value="logs/citesphhere-exporter.log"/>
+      <param name="file" value="logs/citesphere-exporter.log"/>
       <param name="immediateFlush" value="true"/>
 
       <layout class="org.apache.log4j.PatternLayout">
